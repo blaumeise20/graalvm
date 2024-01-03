@@ -69,6 +69,10 @@ import com.oracle.truffle.api.TruffleSafepoint;
 import com.oracle.truffle.api.frame.FrameDescriptor;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.impl.FrameWithoutBoxing;
+import com.oracle.truffle.api.nodes.AlternativeBytecode;
+import com.oracle.truffle.api.nodes.AlternativeBytecodeNode;
+import com.oracle.truffle.api.nodes.AlternativeBytecodeParameter;
+import com.oracle.truffle.api.nodes.AlternativeBytecodeSignature;
 import com.oracle.truffle.api.nodes.BlockNode;
 import com.oracle.truffle.api.nodes.EncapsulatingNodeReference;
 import com.oracle.truffle.api.nodes.ExecutionSignature;
@@ -77,10 +81,14 @@ import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.nodes.NodeUtil;
 import com.oracle.truffle.api.nodes.NodeVisitor;
 import com.oracle.truffle.api.nodes.RootNode;
+import com.oracle.truffle.compiler.AlternativeBytecodeConstantPoolProxy;
+import com.oracle.truffle.compiler.AlternativeBytecodeParameterProxy;
+import com.oracle.truffle.compiler.AlternativeBytecodeProxy;
 import com.oracle.truffle.compiler.TruffleCompilable;
 import com.oracle.truffle.runtime.OptimizedRuntimeOptions.ExceptionAction;
 
 import jdk.vm.ci.meta.JavaConstant;
+import jdk.vm.ci.meta.JavaKind;
 import jdk.vm.ci.meta.SpeculationLog;
 
 /**
@@ -1827,6 +1835,96 @@ public abstract class OptimizedCallTarget implements TruffleCompilable, RootCall
     @Override
     public Map<String, String> getCompilerOptions() {
         return engine.getCompilerOptions();
+    }
+
+    @Override
+    public AlternativeBytecodeProxy getAlternativeBytecode() {
+        if (rootNode instanceof AlternativeBytecodeNode) {
+            AlternativeBytecodeNode node = (AlternativeBytecodeNode) rootNode;
+            AlternativeBytecode bytecode = node.getAlternativeBytecode();
+            if (bytecode == null) {
+                return null;
+            }
+
+            AlternativeBytecodeConstantPoolProxy constantPool = new AlternativeBytecodeConstantPoolProxy() {
+
+                public int length() {
+                    return 0;
+                }
+
+            };
+
+            AlternativeBytecodeSignature signature = bytecode.getSignature();
+            AlternativeBytecodeParameterProxy[] parameters = new AlternativeBytecodeParameterProxy[signature.getParameterCount()];
+            for (int i = 0; i < parameters.length; i++) {
+                AlternativeBytecodeParameter param = signature.getParameter(i);
+                parameters[i] = new AlternativeBytecodeParameterProxy() {
+
+                    public String getType() {
+                        return param.getType();
+                    }
+
+                };
+            }
+
+            return new AlternativeBytecodeProxy() {
+
+                public String getMethodName() {
+                    return bytecode.getMethodName();
+                }
+
+                public byte[] getCode() {
+                    return bytecode.getCode();
+                }
+
+                public int getMaxLocals() {
+                    return bytecode.getMaxLocals();
+                }
+
+                public int getMaxStack() {
+                    return bytecode.getMaxStack();
+                }
+
+                public int getModifiers() {
+                    return bytecode.getModifiers();
+                }
+
+                public AlternativeBytecodeConstantPoolProxy getConstantPool() {
+                    return constantPool;
+                }
+
+                public AlternativeBytecodeParameterProxy[] getParameters() {
+                    return parameters;
+                }
+
+                public JavaKind getReturnKind() {
+                    JavaKind kind;
+                    switch (signature.getReturnType().charAt(0)) {
+                        case 'Z': kind = JavaKind.Boolean; break;
+                        case 'B': kind = JavaKind.Byte;    break;
+                        case 'S': kind = JavaKind.Short;   break;
+                        case 'C': kind = JavaKind.Char;    break;
+                        case 'I': kind = JavaKind.Int;     break;
+                        case 'F': kind = JavaKind.Float;   break;
+                        case 'J': kind = JavaKind.Long;    break;
+                        case 'D': kind = JavaKind.Double;  break;
+                        default : kind = JavaKind.Object;  break;
+                    }
+                    return kind;
+                }
+
+                public String getFrameDescriptor() {
+                    FrameDescriptor fd = getRootNode().getFrameDescriptor();
+                    String str = fd.toString() + "\n";
+                    for (int i = 0; i < fd.getNumberOfSlots(); i++) {
+                        str += " " + fd.getSlotKind(i);
+                    }
+                    return str;
+                }
+            };
+        }
+
+        return null;
     }
 
 }

@@ -38,6 +38,8 @@ import org.graalvm.compiler.truffle.compiler.TruffleCompilerOptions;
 import org.graalvm.compiler.truffle.compiler.TruffleInliningScope;
 import org.graalvm.compiler.truffle.compiler.TruffleTierContext;
 
+import com.oracle.truffle.compiler.AlternativeBytecodeProxy;
+
 public final class AgnosticInliningPhase extends BasePhase<TruffleTierContext> {
 
     private static final ArrayList<InliningPolicyProvider> POLICY_PROVIDERS;
@@ -81,6 +83,15 @@ public final class AgnosticInliningPhase extends BasePhase<TruffleTierContext> {
 
     @Override
     protected void run(StructuredGraph graph, TruffleTierContext context) {
+        AlternativeBytecodeProxy bytecode = context.compilable.getAlternativeBytecode();
+        if (graph.name.startsWith("L_________IsPrime_________;.do") && bytecode != null) {
+            System.out.println("[DEBUG] AgnosticInlining: " + graph.name + ", bytecode: " + bytecode);
+            try {
+                StructuredGraph newGraph = BytecodeToGraphParser.parseFromBytecode(graph, bytecode, context);
+
+                newGraph.getDebug().dump(org.graalvm.compiler.debug.DebugContext.BASIC_LEVEL, newGraph, "[DEBUG] new graph", "");
+            } catch (Throwable t) {}
+        }
         final InliningPolicy policy = getInliningPolicyProvider(context).get(context.compilerOptions, context);
         final CallTree tree = new CallTree(partialEvaluator, postPartialEvaluationSuite, context, policy);
         TruffleInliningScope scope = TruffleInliningScope.getCurrent(context.debug);

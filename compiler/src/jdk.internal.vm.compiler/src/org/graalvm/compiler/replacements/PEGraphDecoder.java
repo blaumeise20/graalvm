@@ -887,9 +887,11 @@ public abstract class PEGraphDecoder extends SimplifyingGraphDecoder {
     public void decode(ResolvedJavaMethod method) {
         try (DebugContext.Scope scope = debug.scope("PEGraphDecode", graph)) {
             EncodedGraph encodedGraph = lookupEncodedGraph(method, null);
+            debug.dump(org.graalvm.compiler.debug.DebugContext.BASIC_LEVEL, graph, "[DEBUG] before decode", "");
             recordGraphElements(encodedGraph);
             PEMethodScope methodScope = createMethodScope(graph, null, null, encodedGraph, method, null, 0, null);
             decode(createInitialLoopScope(methodScope, null));
+            debug.dump(org.graalvm.compiler.debug.DebugContext.BASIC_LEVEL, graph, "[DEBUG] after decode", "");
             debug.dump(DebugContext.VERBOSE_LEVEL, graph, "Before graph cleanup");
             cleanupGraph(methodScope);
 

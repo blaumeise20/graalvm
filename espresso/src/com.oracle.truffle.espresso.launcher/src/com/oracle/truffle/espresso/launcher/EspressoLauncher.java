@@ -580,11 +580,14 @@ public final class EspressoLauncher extends AbstractLanguageLauncher {
                 throw abort(usage());
             }
             try {
+                System.out.println("[AA] loading bindings for LauncherHelper");
                 Value launcherHelper = context.getBindings("java").getMember("sun.launcher.LauncherHelper");
+                System.out.println("[AA] loading main method");
                 Value mainKlass = launcherHelper //
                                 .invokeMember("checkAndLoadMain", true, launchMode.ordinal(), mainClassName) //
                                 .getMember("static");
 
+                System.out.println("[AA] creating arguments");
                 // Convert arguments to a guest String[], avoiding passing a foreign object right
                 // away to Espresso.
                 Value stringArray = context.getBindings("java").getMember("[Ljava.lang.String;");
@@ -592,6 +595,7 @@ public final class EspressoLauncher extends AbstractLanguageLauncher {
                 for (int i = 0; i < mainClassArgs.size(); i++) {
                     guestMainClassArgs.setArrayElement(i, mainClassArgs.get(i));
                 }
+                System.out.println("[AA] running main");
 
                 mainKlass.invokeMember("main/([Ljava/lang/String;)V", guestMainClassArgs);
                 if (pauseOnExit) {
@@ -602,6 +606,7 @@ public final class EspressoLauncher extends AbstractLanguageLauncher {
                         e.printStackTrace();
                     }
                 }
+                System.out.println("[AA] done!");
             } catch (PolyglotException e) {
                 if (e.isInternalError()) {
                     e.printStackTrace();

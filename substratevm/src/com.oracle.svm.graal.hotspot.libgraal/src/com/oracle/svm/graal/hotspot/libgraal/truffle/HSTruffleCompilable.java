@@ -69,6 +69,7 @@ import org.graalvm.jniutils.JNIUtil;
 import org.graalvm.nativebridge.BinaryInput;
 
 import com.oracle.svm.graal.hotspot.libgraal.LibGraal;
+import com.oracle.truffle.compiler.AlternativeBytecodeProxy;
 import com.oracle.truffle.compiler.TruffleCompilable;
 import com.oracle.truffle.compiler.hotspot.libgraal.TruffleFromLibGraal;
 import com.oracle.truffle.compiler.hotspot.libgraal.TruffleFromLibGraal.Id;
@@ -129,6 +130,11 @@ final class HSTruffleCompilable extends HSObject implements TruffleCompilable {
             map.put(key, in.readUTF());
         }
         return map;
+    }
+
+    @Override
+    public AlternativeBytecodeProxy getAlternativeBytecode() {
+        return null;
     }
 
     @Override

@@ -122,7 +122,9 @@ final class GraphManager {
 
     Entry peRoot() {
         final PEAgnosticInlineInvokePlugin plugin = newPlugin();
+        rootContext.graph.getDebug().dump(org.graalvm.compiler.debug.DebugContext.BASIC_LEVEL, rootContext.graph, "[DEBUG] graph before PE", "");
         partialEvaluator.doGraphPE(rootContext, plugin, graphCacheForInlining);
+        rootContext.graph.getDebug().dump(org.graalvm.compiler.debug.DebugContext.BASIC_LEVEL, rootContext.graph, "[DEBUG] graph after PE", "");
         StructuredGraph graphAfterPE = copyGraphForDebugDump(rootContext);
         postPartialEvaluationSuite.apply(rootContext.graph, rootContext);
         rootContext.debug.dump(DebugContext.BASIC_LEVEL, rootContext.graph, "After PE Tier");
