@@ -47,6 +47,7 @@ import com.oracle.svm.graal.isolated.IsolatedObjectProxy;
 import com.oracle.svm.graal.isolated.IsolatedSpeculationLog;
 import com.oracle.svm.truffle.api.SubstrateCompilableTruffleAST;
 import com.oracle.svm.truffle.isolated.BinaryOutput.ByteArrayBinaryOutput;
+import com.oracle.truffle.compiler.AlternativeBytecodeProxy;
 import com.oracle.truffle.compiler.TruffleCompilable;
 
 import jdk.vm.ci.code.InstalledCode;
@@ -157,6 +158,11 @@ final class IsolatedCompilableTruffleAST extends IsolatedObjectProxy<SubstrateCo
         var optionsHandle = IsolatedCompileContext.get().hand(options);
         getCompilerOptions0(IsolatedCompileContext.get().getClient(), handle, optionsHandle);
         return options;
+    }
+
+    @Override
+    public AlternativeBytecodeProxy getAlternativeBytecode() {
+        return null;
     }
 
     @CEntryPoint(include = CEntryPoint.NotIncludedAutomatically.class, publishAs = CEntryPoint.Publish.NotPublished)

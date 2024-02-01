@@ -184,4 +184,13 @@ public interface TruffleCompilable {
      */
     Map<String, String> getCompilerOptions();
 
+    /**
+     * Returns an optional alternative bytecode that will be used for constructing the graph of
+     * this AST instead of partially evaluating the interpreter methods.
+     *
+     * WARNING: Use with caution. The behavior of any interpreter method will be completely
+     * replaced by the code returned from this method. Things like counting executed instructions
+     * might not work anymore.
+     */
+    AlternativeBytecodeProxy getAlternativeBytecode();
 }

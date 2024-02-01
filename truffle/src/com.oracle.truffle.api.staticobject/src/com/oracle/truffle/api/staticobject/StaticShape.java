@@ -162,7 +162,7 @@ public abstract class StaticShape<T> {
 
     abstract Object getStorage(Object obj, boolean primitive);
 
-    final Class<?> getStorageClass() {
+    public final Class<?> getStorageClass() { // TODO(blaumeise20): add other way of finding the underlying class in the compiler
         return storageClass;
     }
 

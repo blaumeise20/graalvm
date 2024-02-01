@@ -38,6 +38,8 @@ import org.graalvm.compiler.truffle.compiler.TruffleCompilerOptions;
 import org.graalvm.compiler.truffle.compiler.TruffleInliningScope;
 import org.graalvm.compiler.truffle.compiler.TruffleTierContext;
 
+import com.oracle.truffle.compiler.AlternativeBytecodeProxy;
+
 public final class AgnosticInliningPhase extends BasePhase<TruffleTierContext> {
 
     private static final ArrayList<InliningPolicyProvider> POLICY_PROVIDERS;
@@ -81,30 +83,43 @@ public final class AgnosticInliningPhase extends BasePhase<TruffleTierContext> {
 
     @Override
     protected void run(StructuredGraph graph, TruffleTierContext context) {
-        final InliningPolicy policy = getInliningPolicyProvider(context).get(context.compilerOptions, context);
-        final CallTree tree = new CallTree(partialEvaluator, postPartialEvaluationSuite, context, policy);
-        TruffleInliningScope scope = TruffleInliningScope.getCurrent(context.debug);
-        if (scope != null) {
-            scope.setCallTree(tree);
+        AlternativeBytecodeProxy bytecode = context.compilable.getAlternativeBytecode();
+        // bytecode = null;
+        if (graph.name.contains("doLoopThing") && bytecode != null) {
+            System.out.println("[DEBUG] AgnosticInlining: " + graph.name + ", bytecode: " + bytecode);
+            try {
+                StructuredGraph newGraph = BytecodeToGraphParser.parseFromBytecode(graph, bytecode, context);
+                newGraph.getDebug().dump(org.graalvm.compiler.debug.DebugContext.BASIC_LEVEL, newGraph, "[DEBUG] new graph", "");
+            } catch (Throwable t) {
+                System.out.println(t);
+            }
         }
+        else {
+            final InliningPolicy policy = getInliningPolicyProvider(context).get(context.compilerOptions, context);
+            final CallTree tree = new CallTree(partialEvaluator, postPartialEvaluationSuite, context, policy);
+            TruffleInliningScope scope = TruffleInliningScope.getCurrent(context.debug);
+            if (scope != null) {
+                scope.setCallTree(tree);
+            }
 
-        tree.dumpBasic("Before Inline");
-        if (TruffleCompilerOptions.Inlining.getValue(context.compilerOptions)) {
-            policy.run(tree);
-            tree.dumpBasic("After Inline");
-            tree.collectTargetsToDequeue(context.task);
-            tree.updateTracingInfo(context.task);
-        }
-        tree.finalizeGraph();
-        tree.trace();
-        if (!tree.getRoot().getChildren().isEmpty()) {
-            /*
-             * If we've seen a truffle call in the graph, even if we have not inlined any call
-             * target, we need to run the truffle tier phases again after the PE inlining phase has
-             * finalized the graph. On the other hand, if there are no calls (root is a leaf) we can
-             * skip the truffle tier because there are no finalization points.
-             */
-            postPartialEvaluationSuite.apply(graph, context);
+            tree.dumpBasic("Before Inline");
+            if (TruffleCompilerOptions.Inlining.getValue(context.compilerOptions)) {
+                policy.run(tree);
+                tree.dumpBasic("After Inline");
+                tree.collectTargetsToDequeue(context.task);
+                tree.updateTracingInfo(context.task);
+            }
+            tree.finalizeGraph();
+            tree.trace();
+            if (!tree.getRoot().getChildren().isEmpty()) {
+                /*
+                 * If we've seen a truffle call in the graph, even if we have not inlined any call
+                 * target, we need to run the truffle tier phases again after the PE inlining phase has
+                 * finalized the graph. On the other hand, if there are no calls (root is a leaf) we can
+                 * skip the truffle tier because there are no finalization points.
+                 */
+                postPartialEvaluationSuite.apply(graph, context);
+            }
         }
 
         graph.maybeCompress();

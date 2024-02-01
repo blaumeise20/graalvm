@@ -32,11 +32,19 @@ import com.oracle.truffle.api.frame.FrameDescriptor;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.instrumentation.StandardTags;
 import com.oracle.truffle.api.interop.TruffleObject;
+import com.oracle.truffle.api.nodes.AlternativeBytecode;
+import com.oracle.truffle.api.nodes.AlternativeBytecodeConstantPool;
+import com.oracle.truffle.api.nodes.AlternativeBytecodeNode;
+import com.oracle.truffle.api.nodes.AlternativeBytecodeParameter;
+import com.oracle.truffle.api.nodes.AlternativeBytecodeSignature;
 import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.nodes.NodeUtil;
 import com.oracle.truffle.api.nodes.RootNode;
 import com.oracle.truffle.api.profiles.BranchProfile;
 import com.oracle.truffle.api.source.SourceSection;
+import com.oracle.truffle.espresso.classfile.attributes.CodeAttribute;
+import com.oracle.truffle.espresso.descriptors.Symbol;
+import com.oracle.truffle.espresso.descriptors.Symbol.Type;
 import com.oracle.truffle.espresso.impl.ContextAccess;
 import com.oracle.truffle.espresso.impl.Method;
 import com.oracle.truffle.espresso.meta.Meta;
@@ -52,7 +60,7 @@ import com.oracle.truffle.espresso.vm.InterpreterToVM;
  * The root of all executable bits in Espresso, includes everything that can be called a "method" in
  * Java. Regular (concrete) Java methods, native methods and intrinsics/substitutions.
  */
-public abstract class EspressoRootNode extends RootNode implements ContextAccess {
+public abstract class EspressoRootNode extends RootNode implements ContextAccess, AlternativeBytecodeNode {
 
     // must not be of type EspressoMethodNode as it might be wrapped by instrumentation
     @Child protected EspressoInstrumentableRootNode methodNode;
@@ -445,4 +453,137 @@ public abstract class EspressoRootNode extends RootNode implements ContextAccess
     protected final boolean isTrivial() {
         return !methodNode.getMethodVersion().isSynchronized() && methodNode.isTrivial();
     }
+
+    @Override
+    public AlternativeBytecode getAlternativeBytecode() {
+        Method.MethodVersion methodVersion = getMethodVersion();
+        if (methodVersion == null) {
+            return null;
+        }
+
+        CodeAttribute codeAttribute = methodVersion.getCodeAttribute();
+        if (codeAttribute == null) {
+            return null;
+        }
+
+        AlternativeBytecodeParameter.Check receiverCheck =
+            new AlternativeBytecodeParameter.Check("lockOrForeignMarker", StaticObject.FOREIGN_MARKER);
+
+        return new AlternativeBytecode() {
+
+            @Override
+            public String getMethodName() {
+                return methodVersion.getNameAsString();
+            }
+
+            @Override
+            public byte[] getCode() {
+                return codeAttribute.getOriginalCode();
+            }
+
+            @Override
+            public int getMaxLocals() {
+                return codeAttribute.getMaxLocals();
+            }
+
+            @Override
+            public int getMaxStack() {
+                return codeAttribute.getMaxStack();
+            }
+
+            @Override
+            public int getModifiers() {
+                return methodVersion.getModifiers();
+            }
+
+            @Override
+            public AlternativeBytecodeConstantPool getConstantPool() {
+                return methodVersion.getPool();
+            }
+
+            @Override
+            public Class<?> getReceiverType() {
+                return methodVersion.isStatic() ? null : StaticObject.class;
+            }
+
+            @Override
+            public AlternativeBytecodeParameter.Check getReceiverCheck() {
+                return receiverCheck;
+            }
+
+            @Override
+            public AlternativeBytecodeSignature getSignature() {
+                return new AlternativeBytecodeSignature() {
+
+                    @Override
+                    public int getParameterCount() {
+                        // Subtract 1 for return type.
+                        return methodVersion.getMethod().getParsedSignature().length - 1;
+                    }
+
+                    @Override
+                    public AlternativeBytecodeParameter getParameter(int i) {
+                        String type = methodVersion.getMethod().getParsedSignature()[i].toString();
+                        Class<?> hostClass;
+                        switch (type.charAt(0)) {
+                            case 'Z': hostClass = Boolean.class;      break;
+                            case 'B': hostClass = Byte.class;         break;
+                            case 'S': hostClass = Short.class;        break;
+                            case 'C': hostClass = Character.class;    break;
+                            case 'I': hostClass = Integer.class;      break;
+                            case 'F': hostClass = Float.class;        break;
+                            case 'J': hostClass = Long.class;         break;
+                            case 'D': hostClass = Double.class;       break;
+                            case 'V': hostClass = Void.class;         break;
+                            default : hostClass = StaticObject.class; break;
+                        }
+
+                        AlternativeBytecodeParameter.Check argumentCheck = hostClass == StaticObject.class
+                            ? new AlternativeBytecodeParameter.Check("lockOrForeignMarker", StaticObject.FOREIGN_MARKER)
+                            : null;
+
+                        return new AlternativeBytecodeParameter() {
+                            @Override
+                            public String getType() {
+                                return type;
+                            }
+
+                            @Override
+                            public Class<?> getExpectedHostClass() {
+                                return hostClass;
+                            }
+
+                            @Override
+                            public Check getArgumentCheck() {
+                                return argumentCheck;
+                            }
+                        };
+                    }
+
+                    @Override
+                    public String getReturnType() {
+                        Symbol<Type>[] signature = methodVersion.getMethod().getParsedSignature();
+                        return signature[signature.length - 1].toString();
+                    }
+
+                };
+            }
+
+            @Override
+            public Class<?> getObjectClass() {
+                return StaticObject.class;
+            }
+
+            @Override
+            public String getNullCheckField() {
+                return "klass";
+            }
+
+            @Override
+            public Object getVoidObject() {
+                return StaticObject.NULL;
+            }
+        };
+    }
+
 }

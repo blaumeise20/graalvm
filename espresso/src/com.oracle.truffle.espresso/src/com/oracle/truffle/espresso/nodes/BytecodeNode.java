@@ -654,6 +654,10 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
         boolean skipEntryInstrumentation = isOSR;
         boolean skipLivenessActions = false;
 
+        // if (methodVersion.getNameAsString().contains("doTest")) {
+        //     Integer.valueOf(0);
+        // }
+
         final Counter loopCount = new Counter();
 
         setBCI(frame, curBCI);

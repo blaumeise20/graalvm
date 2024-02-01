@@ -1,0 +1,2 @@
+// detect caller
+java.util.Arrays.asList((Thread.currentThread().getStackTrace())).stream().anyMatch(ste -> ste.getClassName().contains("BytecodeToGraph"))

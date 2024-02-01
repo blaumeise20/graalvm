@@ -163,11 +163,14 @@ public class CachingPEGraphDecoder extends PEGraphDecoder {
             }
             IntrinsicContext initialIntrinsicContext = null;
             GraphBuilderPhase.Instance graphBuilderPhaseInstance = createGraphBuilderPhaseInstance(initialIntrinsicContext);
+            debug.dump(org.graalvm.compiler.debug.DebugContext.BASIC_LEVEL, graphToEncode, "[DEBUG] encoded first", "");
             graphBuilderPhaseInstance.apply(graphToEncode);
+            debug.dump(org.graalvm.compiler.debug.DebugContext.BASIC_LEVEL, graphToEncode, "[DEBUG] encoded second", "");
             canonicalizer.apply(graphToEncode, providers);
             if (postParsingPhase != null) {
                 postParsingPhase.apply(graphToEncode, providers);
             }
+            debug.dump(org.graalvm.compiler.debug.DebugContext.BASIC_LEVEL, graphToEncode, "[DEBUG] encoded third", "");
         } catch (Throwable ex) {
             throw debug.handle(ex);
         }

@@ -42,6 +42,7 @@ package com.oracle.truffle.runtime;
 
 import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -69,6 +70,13 @@ import com.oracle.truffle.api.TruffleSafepoint;
 import com.oracle.truffle.api.frame.FrameDescriptor;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.impl.FrameWithoutBoxing;
+import com.oracle.truffle.api.nodes.AlternativeBytecode;
+import com.oracle.truffle.api.nodes.AlternativeBytecodeConstant;
+import com.oracle.truffle.api.nodes.AlternativeBytecodeNode;
+import com.oracle.truffle.api.nodes.AlternativeBytecodeObjectConstant;
+import com.oracle.truffle.api.nodes.AlternativeBytecodeParameter;
+import com.oracle.truffle.api.nodes.AlternativeBytecodePrimitiveConstant;
+import com.oracle.truffle.api.nodes.AlternativeBytecodeSignature;
 import com.oracle.truffle.api.nodes.BlockNode;
 import com.oracle.truffle.api.nodes.EncapsulatingNodeReference;
 import com.oracle.truffle.api.nodes.ExecutionSignature;
@@ -77,10 +85,16 @@ import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.nodes.NodeUtil;
 import com.oracle.truffle.api.nodes.NodeVisitor;
 import com.oracle.truffle.api.nodes.RootNode;
+import com.oracle.truffle.api.staticobject.AlternativeBytecodeFieldConstant;
+import com.oracle.truffle.compiler.AlternativeBytecodeConstantPoolProxy;
+import com.oracle.truffle.compiler.AlternativeBytecodeParameterCheckProxy;
+import com.oracle.truffle.compiler.AlternativeBytecodeParameterProxy;
+import com.oracle.truffle.compiler.AlternativeBytecodeProxy;
 import com.oracle.truffle.compiler.TruffleCompilable;
 import com.oracle.truffle.runtime.OptimizedRuntimeOptions.ExceptionAction;
 
 import jdk.vm.ci.meta.JavaConstant;
+import jdk.vm.ci.meta.JavaKind;
 import jdk.vm.ci.meta.SpeculationLog;
 
 /**
@@ -1827,6 +1841,214 @@ public abstract class OptimizedCallTarget implements TruffleCompilable, RootCall
     @Override
     public Map<String, String> getCompilerOptions() {
         return engine.getCompilerOptions();
+    }
+
+    @Override
+    public AlternativeBytecodeProxy getAlternativeBytecode() {
+        if (rootNode instanceof AlternativeBytecodeNode) {
+
+            if (nameCache.contains("doMoreTestThings")) {
+                CompilerAsserts.neverPartOfCompilation();
+                ArgumentsProfile profile = argumentsProfile;
+                assert !callProfiled;
+
+                Class<?>[] oldTypes = profile.types;
+                Class<?>[] newTypes = new Class<?>[profile.types.length];
+                for (int j = 0; j < oldTypes.length; j++) {
+                    newTypes[j] = oldTypes[j];
+                }
+                // newTypes[0] = null;
+                // newTypes[1] = null;
+                newTypes[2] = null;
+
+                ArgumentsProfile newProfile = new ArgumentsProfile(newTypes, ArgumentsProfile.ARGUMENT_TYPES_ASSUMPTION_NAME);
+                if (!updateArgumentsProfile(profile, newProfile)) {
+                    throw new IllegalStateException("should not be multithreaded for test");
+                }
+
+                // transitionToInvalidArgumentsProfile();
+            }
+
+            AlternativeBytecodeNode node = (AlternativeBytecodeNode) rootNode;
+            AlternativeBytecode bytecode = node.getAlternativeBytecode();
+            if (bytecode == null) {
+                return null;
+            }
+
+            AlternativeBytecodeConstantPoolProxy constantPool = new AlternativeBytecodeConstantPoolProxy() {
+                public int length() {
+                    return 0;
+                }
+
+                public Object lookupConstant(int index) {
+                    AlternativeBytecodeConstant constant = bytecode.getConstantPool().getConstantAt(index);
+
+                    if (constant instanceof AlternativeBytecodePrimitiveConstant c) {
+                        Object p = c.getBoxedPrimitive();
+                        return JavaConstant.forBoxedPrimitive(p);
+                    }
+
+                    if (constant instanceof AlternativeBytecodeObjectConstant c) {
+                        Object o = c.getObject();
+                        return runtime().forObject(o);
+                    }
+
+                    throw new IllegalStateException("unimplemented rest of lookupConstant");
+                }
+
+                public Field lookupField(int index) { // TODO(blaumeise20): accessing class
+                    AlternativeBytecodeConstant constant = bytecode.getConstantPool().getConstantAt(index);
+                    if (constant instanceof AlternativeBytecodeFieldConstant c) {
+                        Class<?> clazz = c.getShape().getStorageClass();
+                        Field field;
+                        try {
+                            field = clazz.getField(c.getFieldName());
+                        } catch (NoSuchFieldException e) {
+                            return null;
+                        }
+                        return field;
+                    }
+                    else {
+                        return null;
+                    }
+                }
+
+                // TODO(blaumeise20): make proxy more similar to real API
+                public JavaConstant lookupStaticInstanceForField(int index) {
+                    AlternativeBytecodeConstant constant = bytecode.getConstantPool().getConstantAt(index);
+                    if (constant instanceof AlternativeBytecodeFieldConstant c) {
+                        return runtime().forObject(c.getStaticInstance());
+                    }
+                    else {
+                        return null;
+                    }
+                }
+            };
+
+            AlternativeBytecodeSignature signature = bytecode.getSignature();
+            AlternativeBytecodeParameterProxy[] parameters = new AlternativeBytecodeParameterProxy[signature.getParameterCount()];
+            for (int i = 0; i < parameters.length; i++) {
+                AlternativeBytecodeParameter param = signature.getParameter(i);
+                AlternativeBytecodeParameter.Check argumentCheck = param.getArgumentCheck();
+                AlternativeBytecodeParameterCheckProxy check = argumentCheck != null
+                    ? new AlternativeBytecodeParameterCheckProxy(
+                        argumentCheck.getField(),
+                        runtime().forObject(argumentCheck.getValue())
+                    )
+                    : null;
+                parameters[i] = new AlternativeBytecodeParameterProxy() {
+                    public String getType() {
+                        return param.getType();
+                    }
+
+                    public Class<?> getExpectedClass() {
+                        return param.getExpectedHostClass();
+                    }
+
+                    public AlternativeBytecodeParameterCheckProxy getArgumentCheck() {
+                        return check;
+                    }
+                };
+            }
+
+            AlternativeBytecodeParameter.Check receiverCheck1 = bytecode.getReceiverCheck();
+            AlternativeBytecodeParameterCheckProxy receiverCheck = receiverCheck1 != null
+                ? new AlternativeBytecodeParameterCheckProxy(
+                    receiverCheck1.getField(),
+                    runtime().forObject(receiverCheck1.getValue())
+                )
+                : null;
+
+            return new AlternativeBytecodeProxy() {
+                public String getMethodName() {
+                    return bytecode.getMethodName();
+                }
+
+                public byte[] getCode() {
+                    return bytecode.getCode();
+                }
+
+                public int getMaxLocals() {
+                    return bytecode.getMaxLocals();
+                }
+
+                public int getMaxStack() {
+                    return bytecode.getMaxStack();
+                }
+
+                public int getModifiers() {
+                    return bytecode.getModifiers();
+                }
+
+                public AlternativeBytecodeConstantPoolProxy getConstantPool() {
+                    return constantPool;
+                }
+
+                public Class<?> getReceiverType() {
+                    return bytecode.getReceiverType();
+                }
+
+                public AlternativeBytecodeParameterCheckProxy getReceiverCheck() {
+                    return receiverCheck;
+                }
+
+                public AlternativeBytecodeParameterProxy[] getParameters() {
+                    return parameters;
+                }
+
+                public JavaKind getReturnKind() {
+                    JavaKind kind;
+                    switch (signature.getReturnType().charAt(0)) {
+                        case 'Z': kind = JavaKind.Boolean; break;
+                        case 'B': kind = JavaKind.Byte;    break;
+                        case 'S': kind = JavaKind.Short;   break;
+                        case 'C': kind = JavaKind.Char;    break;
+                        case 'I': kind = JavaKind.Int;     break;
+                        case 'F': kind = JavaKind.Float;   break;
+                        case 'J': kind = JavaKind.Long;    break;
+                        case 'D': kind = JavaKind.Double;  break;
+                        case 'V': kind = JavaKind.Void;    break;
+                        default : kind = JavaKind.Object;  break;
+                    }
+                    return kind;
+                }
+
+                public String getFrameDescriptor() {
+                    FrameDescriptor fd = getRootNode().getFrameDescriptor();
+                    String str = fd.toString() + "\n";
+                    for (int i = 0; i < fd.getNumberOfSlots(); i++) {
+                        str += " " + fd.getSlotKind(i);
+                    }
+                    return str;
+                }
+
+                public JavaConstant[] getCurrentAssumptions() {
+                    return new JavaConstant[] { runtime().forObject(argumentsProfile.assumption) };
+                }
+
+                public Class<?>[] getArgumentsProfile() {
+                    if (argumentsProfile != null && argumentsProfile.assumption.isValid()) {
+                        return argumentsProfile.types;
+                    } else {
+                        return null;
+                    }
+                }
+
+                public Class<?> getObjectClass() {
+                    return bytecode.getObjectClass();
+                }
+
+                public String getNullCheckField() {
+                    return bytecode.getNullCheckField();
+                }
+
+                public JavaConstant getVoidObject() {
+                    return runtime().forObject(bytecode.getVoidObject());
+                }
+            };
+        }
+
+        return null;
     }
 
 }

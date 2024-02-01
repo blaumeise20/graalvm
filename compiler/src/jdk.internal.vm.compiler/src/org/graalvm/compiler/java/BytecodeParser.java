@@ -536,6 +536,7 @@ public class BytecodeParser extends CoreProvidersDelegate implements GraphBuilde
         final Mark mark;
         final BytecodeParser parser;
         List<ReturnToCallerData> returnDataList;
+        boolean canDeleteStateBefore = true;
 
         /**
          * Creates a scope for root parsing an intrinsic.
@@ -568,6 +569,15 @@ public class BytecodeParser extends CoreProvidersDelegate implements GraphBuilde
         @Override
         public void close() {
             processPlaceholderFrameStates();
+            if (stateBefore != null && canDeleteStateBefore) {
+                if (stateBefore.predecessor() != null) {
+                    throw GraalError.shouldNotReachHere("this is impossible");
+                }
+                if (stateBefore.hasUsages()) {
+                    throw GraalError.shouldNotReachHere("this is impossible");
+                }
+                stateBefore.safeDelete();
+            }
         }
 
         /**
@@ -610,11 +620,13 @@ public class BytecodeParser extends CoreProvidersDelegate implements GraphBuilde
                             }
                         }
                     } else if (frameState.bci == BytecodeFrame.BEFORE_BCI) {
-                        if (stateBefore == null) {
-                            stateBefore = graph.start().stateAfter();
+                        FrameState newFrameState = stateBefore;
+                        if (newFrameState == null) {
+                            newFrameState = graph.start().stateAfter();
                         }
-                        if (stateBefore != frameState) {
-                            frameState.replaceAndDelete(stateBefore);
+                        if (newFrameState != frameState) {
+                            frameState.replaceAndDelete(newFrameState);
+                            canDeleteStateBefore = false; // TODO(blaumeise20): check if this is valid
                         }
                     } else if (frameState.bci == BytecodeFrame.AFTER_EXCEPTION_BCI || (frameState.bci == BytecodeFrame.UNWIND_BCI && !callee.isSynchronized())) {
                         // This is a frame state for the entry point to an exception
@@ -2569,9 +2581,10 @@ public class BytecodeParser extends CoreProvidersDelegate implements GraphBuilde
         throw res;
     }
 
-    protected void parseAndInlineCallee(ResolvedJavaMethod targetMethod, ValueNode[] args, IntrinsicContext calleeIntrinsicContext) {
+    protected boolean parseAndInlineCallee(ResolvedJavaMethod targetMethod, ValueNode[] args, IntrinsicContext calleeIntrinsicContext) {
         FixedWithNextNode calleeBeforeUnwindNode = null;
         ValueNode calleeUnwindValue = null;
+        boolean hasReturnValue;
 
         try (InliningScope s = parsingIntrinsic() ? null
                         : (calleeIntrinsicContext != null ? new IntrinsicScope(this, targetMethod, args)
@@ -2596,7 +2609,7 @@ public class BytecodeParser extends CoreProvidersDelegate implements GraphBuilde
                 }
             }
 
-            processCalleeReturn(targetMethod, s, calleeReturnDataList);
+            hasReturnValue = processCalleeReturn(targetMethod, s, calleeReturnDataList) != null;
 
             calleeBeforeUnwindNode = parser.getBeforeUnwindNode();
             if (calleeBeforeUnwindNode != null) {
@@ -2617,6 +2630,8 @@ public class BytecodeParser extends CoreProvidersDelegate implements GraphBuilde
         if (calleeBeforeUnwindNode != null) {
             calleeBeforeUnwindNode.setNext(handleException(calleeUnwindValue, bci(), false));
         }
+
+        return hasReturnValue;
     }
 
     private ValueNode processCalleeReturn(ResolvedJavaMethod targetMethod, InliningScope inliningScope, List<ReturnToCallerData> calleeReturnDataList) {
@@ -4051,8 +4066,10 @@ public class BytecodeParser extends CoreProvidersDelegate implements GraphBuilde
     private void genLoadIndexed(JavaKind kind) {
         ValueNode index = frameState.pop(JavaKind.Int);
         ValueNode array = frameState.pop(JavaKind.Object);
+        genLoadIndexed(kind, maybeEmitExplicitNullCheck(array), index);
+    }
 
-        array = maybeEmitExplicitNullCheck(array);
+    protected void genLoadIndexed(JavaKind kind, ValueNode array, ValueNode index) {
         GuardingNode boundsCheck = maybeEmitExplicitBoundsCheck(array, index);
 
         for (NodePlugin plugin : graphBuilderConfig.getPlugins().getNodePlugins()) {
@@ -4804,7 +4821,7 @@ public class BytecodeParser extends CoreProvidersDelegate implements GraphBuilde
         }
     }
 
-    private void genGetField(ResolvedJavaField resolvedField, ValueNode receiver) {
+    protected void genGetField(ResolvedJavaField resolvedField, ValueNode receiver) { // TODO(blaumeise20): figure out visibility
         for (NodePlugin plugin : graphBuilderConfig.getPlugins().getNodePlugins()) {
             if (plugin.handleLoadField(this, receiver, resolvedField)) {
                 return;
@@ -4910,20 +4927,23 @@ public class BytecodeParser extends CoreProvidersDelegate implements GraphBuilde
         if (field instanceof ResolvedJavaField) {
             ValueNode receiver = maybeEmitExplicitNullCheck(receiverInput);
             ResolvedJavaField resolvedField = (ResolvedJavaField) field;
-
-            for (NodePlugin plugin : graphBuilderConfig.getPlugins().getNodePlugins()) {
-                if (plugin.handleStoreField(this, receiver, resolvedField, value)) {
-                    return;
-                }
-            }
-
-            if (resolvedField.isFinal() && method.isConstructor()) {
-                finalBarrierRequired = true;
-            }
-            genStoreField(receiver, resolvedField, value);
+            genPutField(resolvedField, receiver, value);
         } else {
             handleUnresolvedStoreField(field, value, receiverInput);
         }
+    }
+
+    protected void genPutField(ResolvedJavaField resolvedField, ValueNode receiver, ValueNode value) { // TODO(blaumeise20): figure out visibility
+        for (NodePlugin plugin : graphBuilderConfig.getPlugins().getNodePlugins()) {
+            if (plugin.handleStoreField(this, receiver, resolvedField, value)) {
+                return;
+            }
+        }
+
+        if (resolvedField.isFinal() && method.isConstructor()) {
+            finalBarrierRequired = true;
+        }
+        genStoreField(receiver, resolvedField, value);
     }
 
     protected void genGetStatic(int cpi, int opcode) {

@@ -79,6 +79,7 @@ import org.graalvm.compiler.nodes.EncodedGraph;
 import org.graalvm.compiler.nodes.FixedNode;
 import org.graalvm.compiler.nodes.FixedWithNextNode;
 import org.graalvm.compiler.nodes.FrameState;
+import org.graalvm.compiler.nodes.GraphDecoder;
 import org.graalvm.compiler.nodes.IfNode;
 import org.graalvm.compiler.nodes.Invokable;
 import org.graalvm.compiler.nodes.Invoke;
@@ -887,9 +888,15 @@ public abstract class PEGraphDecoder extends SimplifyingGraphDecoder {
     public void decode(ResolvedJavaMethod method) {
         try (DebugContext.Scope scope = debug.scope("PEGraphDecode", graph)) {
             EncodedGraph encodedGraph = lookupEncodedGraph(method, null);
+            StructuredGraph testGraph = new StructuredGraph.Builder(graph.getOptions(), debug).method(method).build();
+            GraphDecoder dec = new GraphDecoder(architecture, testGraph);
+            dec.decode(encodedGraph);
+            debug.dump(org.graalvm.compiler.debug.DebugContext.BASIC_LEVEL, testGraph, "[DEBUG] testtest", "");
+            debug.dump(org.graalvm.compiler.debug.DebugContext.BASIC_LEVEL, graph, "[DEBUG] before decode", "");
             recordGraphElements(encodedGraph);
             PEMethodScope methodScope = createMethodScope(graph, null, null, encodedGraph, method, null, 0, null);
             decode(createInitialLoopScope(methodScope, null));
+            debug.dump(org.graalvm.compiler.debug.DebugContext.BASIC_LEVEL, graph, "[DEBUG] after decode", "");
             debug.dump(DebugContext.VERBOSE_LEVEL, graph, "Before graph cleanup");
             cleanupGraph(methodScope);
 

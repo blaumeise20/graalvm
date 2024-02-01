@@ -25,13 +25,24 @@ package com.oracle.truffle.espresso.classfile;
 import com.oracle.truffle.api.CompilerAsserts;
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
+import com.oracle.truffle.api.nodes.AlternativeBytecodeConstant;
+import com.oracle.truffle.api.nodes.AlternativeBytecodeConstantPool;
+import com.oracle.truffle.api.nodes.AlternativeBytecodeObjectConstant;
+import com.oracle.truffle.api.nodes.AlternativeBytecodePrimitiveConstant;
+import com.oracle.truffle.api.staticobject.AlternativeBytecodeFieldConstant;
+import com.oracle.truffle.api.staticobject.StaticShape;
 import com.oracle.truffle.espresso.classfile.constantpool.ClassConstant;
+import com.oracle.truffle.espresso.classfile.constantpool.DoubleConstant;
 import com.oracle.truffle.espresso.classfile.constantpool.DynamicConstant;
 import com.oracle.truffle.espresso.classfile.constantpool.FieldRefConstant;
+import com.oracle.truffle.espresso.classfile.constantpool.FloatConstant;
+import com.oracle.truffle.espresso.classfile.constantpool.IntegerConstant;
 import com.oracle.truffle.espresso.classfile.constantpool.InvokeDynamicConstant;
+import com.oracle.truffle.espresso.classfile.constantpool.LongConstant;
 import com.oracle.truffle.espresso.classfile.constantpool.NeedsFreshResolutionException;
 import com.oracle.truffle.espresso.classfile.constantpool.PoolConstant;
 import com.oracle.truffle.espresso.classfile.constantpool.Resolvable;
+import com.oracle.truffle.espresso.classfile.constantpool.StringConstant;
 import com.oracle.truffle.espresso.impl.Field;
 import com.oracle.truffle.espresso.impl.Klass;
 import com.oracle.truffle.espresso.impl.Method;
@@ -39,8 +50,9 @@ import com.oracle.truffle.espresso.impl.ObjectKlass;
 import com.oracle.truffle.espresso.runtime.EspressoContext;
 import com.oracle.truffle.espresso.runtime.EspressoException;
 import com.oracle.truffle.espresso.runtime.staticobject.StaticObject;
+import com.oracle.truffle.espresso.runtime.staticobject.StaticObject.StaticObjectFactory;
 
-public final class RuntimeConstantPool extends ConstantPool {
+public final class RuntimeConstantPool extends ConstantPool implements AlternativeBytecodeConstantPool {
 
     private final EspressoContext context;
     private final ConstantPool pool;
@@ -234,5 +246,34 @@ public final class RuntimeConstantPool extends ConstantPool {
     @Override
     public int getMinorVersion() {
         return pool.getMinorVersion();
+    }
+
+    @Override
+    public AlternativeBytecodeConstant getConstantAt(int index) {
+        PoolConstant constant = at(index);
+        if (constant instanceof IntegerConstant c) {
+            return AlternativeBytecodePrimitiveConstant.forBoxed(c.value());
+        } else if (constant instanceof FloatConstant c) {
+            return AlternativeBytecodePrimitiveConstant.forBoxed(c.value());
+        } else if (constant instanceof LongConstant c) {
+            return AlternativeBytecodePrimitiveConstant.forBoxed(c.value());
+        } else if (constant instanceof DoubleConstant c) {
+            return AlternativeBytecodePrimitiveConstant.forBoxed(c.value());
+        } else if (constant instanceof StringConstant c) {
+            StaticObject str = resolvedStringAt(index);
+            return AlternativeBytecodeObjectConstant.forObject(str);
+        } else if (constant instanceof FieldRefConstant c) {
+            Field f = resolvedFieldAt(null, index);
+            System.out.println("---- field -----");
+            ObjectKlass klass = f.getDeclaringKlass();
+            StaticShape<StaticObjectFactory> shape = f.getDeclaringKlass().getLinkedKlass().getShape(f.isStatic());
+            if (f.isStatic()) {
+                StaticObject statics = klass.tryInitializeAndGetStatics();
+                return AlternativeBytecodeFieldConstant.forStaticFieldOn(shape, f.getNameAsString(), statics);
+            } else {
+                return AlternativeBytecodeFieldConstant.forFieldOn(shape, f.getNameAsString());
+            }
+        }
+        return null;
     }
 }
