@@ -782,14 +782,6 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                 assert statementIndex == InstrumentationSupport.NO_STATEMENT || curBCI == returnValueBci || curBCI == throwValueBci ||
                                 statementIndex == instrumentation.hookBCIToNodeIndex.lookupBucket(curBCI);
 
-                if (instrument != null || Bytecodes.canTrap(curOpcode)) {
-                    /*
-                     * curOpcode can be == WIDE, but none of the WIDE-prefixed bytecodes throw
-                     * exceptions.
-                     */
-                    setBCI(frame, curBCI);
-                }
-
                 // @formatter:off
                 switch (curOpcode) {
                     case NOP: break;
@@ -1063,7 +1055,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                             int targetBCI = bs.readBranchDest2(curBCI);
                             top += Bytecodes.stackEffectOf(IFLE);
                             statementIndex = beforeJumpChecks(frame, curBCI, targetBCI, top, statementIndex, instrument, loopCounter, skipLivenessActions);
-                            curBCI = targetBCI;
+                            setBCI(frame, curBCI = targetBCI);
                             continue loop;
                         }
                         break;
@@ -1077,7 +1069,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                         if (takeBranchPrimitive2(popInt(frame, top - 1), popInt(frame, top - 2), curOpcode)) {
                             top += Bytecodes.stackEffectOf(IF_ICMPLE);
                             statementIndex = beforeJumpChecks(frame, curBCI, bs.readBranchDest2(curBCI), top, statementIndex, instrument, loopCounter, skipLivenessActions);
-                            curBCI = bs.readBranchDest2(curBCI);
+                            setBCI(frame, curBCI = bs.readBranchDest2(curBCI));
                             continue loop;
                         }
                         break;
@@ -1088,7 +1080,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                             int targetBCI = bs.readBranchDest2(curBCI);
                             top += Bytecodes.stackEffectOf(IF_ACMPNE);
                             statementIndex = beforeJumpChecks(frame, curBCI, targetBCI, top, statementIndex, instrument, loopCounter, skipLivenessActions);
-                            curBCI = targetBCI;
+                            setBCI(frame, curBCI = targetBCI);
                             continue loop;
                         }
                         break;
@@ -1099,7 +1091,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                             int targetBCI = bs.readBranchDest2(curBCI);
                             top += Bytecodes.stackEffectOf(IFNONNULL);
                             statementIndex = beforeJumpChecks(frame, curBCI, targetBCI, top, statementIndex, instrument, loopCounter, skipLivenessActions);
-                            curBCI = targetBCI;
+                            setBCI(frame, curBCI = targetBCI);
                             continue loop;
                         }
                         break;
@@ -1107,13 +1099,13 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                     case GOTO: {
                         int targetBCI = bs.readBranchDest2(curBCI);
                         statementIndex = beforeJumpChecks(frame, curBCI, targetBCI, top, statementIndex, instrument, loopCounter, skipLivenessActions);
-                        curBCI = targetBCI;
+                        setBCI(frame, curBCI = targetBCI);
                         continue loop;
                     }
                     case GOTO_W: {
                         int targetBCI = bs.readBranchDest4(curBCI);
                         statementIndex = beforeJumpChecks(frame, curBCI, targetBCI, top, statementIndex, instrument, loopCounter, skipLivenessActions);
-                        curBCI = targetBCI;
+                        setBCI(frame, curBCI = targetBCI);
                         continue loop;
                     }
                     case JSR: {
@@ -1121,7 +1113,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                         int targetBCI = bs.readBranchDest2(curBCI);
                         top += Bytecodes.stackEffectOf(JSR);
                         statementIndex = beforeJumpChecks(frame, curBCI, targetBCI, top, statementIndex, instrument, loopCounter, skipLivenessActions);
-                        curBCI = targetBCI;
+                        setBCI(frame, curBCI = targetBCI);
                         continue loop;
                     }
                     case JSR_W: {
@@ -1129,7 +1121,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                         int targetBCI = bs.readBranchDest4(curBCI);
                         top += Bytecodes.stackEffectOf(JSR_W);
                         statementIndex = beforeJumpChecks(frame, curBCI, targetBCI, top, statementIndex, instrument, loopCounter, skipLivenessActions);
-                        curBCI = targetBCI;
+                        setBCI(frame, curBCI = targetBCI);
                         continue loop;
                     }
                     case RET: {
@@ -1180,7 +1172,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                                 CompilerAsserts.partialEvaluationConstant(jsr);
                                 top += Bytecodes.stackEffectOf(RET);
                                 statementIndex = beforeJumpChecks(frame, curBCI, jsr, top, statementIndex, instrument, loopCounter, skipLivenessActions);
-                                curBCI = jsr;
+                                setBCI(frame, curBCI = jsr);
                                 continue loop;
                             }
                         }
@@ -1208,7 +1200,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                         });
                         top += Bytecodes.stackEffectOf(RET);
                         statementIndex = beforeJumpChecks(frame, retOpBci, targetBCI, top, statementIndex, instrument, loopCounter, skipLivenessActions);
-                        curBCI = targetBCI;
+                        setBCI(frame, curBCI = targetBCI);
                         continue loop;
                     }
 
@@ -1229,7 +1221,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                             }
                             top += Bytecodes.stackEffectOf(TABLESWITCH);
                             statementIndex = beforeJumpChecks(frame, curBCI, targetBCI, top, statementIndex, instrument, loopCounter, skipLivenessActions);
-                            curBCI = targetBCI;
+                            setBCI(frame, curBCI = targetBCI);
                             continue loop;
                         }
 
@@ -1241,7 +1233,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                                 int targetBCI = switchHelper.targetAt(bs, curBCI, i - low);
                                 top += Bytecodes.stackEffectOf(TABLESWITCH);
                                 statementIndex = beforeJumpChecks(frame, curBCI, targetBCI, top, statementIndex, instrument, loopCounter, skipLivenessActions);
-                                curBCI = targetBCI;
+                                setBCI(frame, curBCI = targetBCI);
                                 continue loop;
                             }
                         }
@@ -1250,7 +1242,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                         int targetBCI = switchHelper.defaultTarget(bs, curBCI);
                         top += Bytecodes.stackEffectOf(TABLESWITCH);
                         statementIndex = beforeJumpChecks(frame, curBCI, targetBCI, top, statementIndex, instrument, loopCounter, skipLivenessActions);
-                        curBCI = targetBCI;
+                        setBCI(frame, curBCI = targetBCI);
                         continue loop;
                     }
                     case LOOKUPSWITCH: {
@@ -1270,7 +1262,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                                 int targetBCI = curBCI + switchHelper.offsetAt(bs, curBCI, mid);
                                 top += Bytecodes.stackEffectOf(LOOKUPSWITCH);
                                 statementIndex = beforeJumpChecks(frame, curBCI, targetBCI, top, statementIndex, instrument, loopCounter, skipLivenessActions);
-                                curBCI = targetBCI;
+                                setBCI(frame, curBCI = targetBCI);
                                 continue loop;
                             }
                         }
@@ -1279,7 +1271,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                         int targetBCI = switchHelper.defaultTarget(bs, curBCI);
                         top += Bytecodes.stackEffectOf(LOOKUPSWITCH);
                         statementIndex = beforeJumpChecks(frame, curBCI, targetBCI, top, statementIndex, instrument, loopCounter, skipLivenessActions);
-                        curBCI = targetBCI;
+                        setBCI(frame, curBCI = targetBCI);
                         continue loop;
                     }
 
@@ -1301,7 +1293,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                         top = startingStackOffset(getMethodVersion().getMaxLocals());
                         frame.setObjectStatic(top, returnValue);
                         top++;
-                        curBCI = returnValueBci;
+                        setBCI(frame, curBCI = returnValueBci);
                         continue loop;
                     }
                     // TODO(peterssen): Order shuffled.
@@ -1439,7 +1431,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                                         CompilerAsserts.partialEvaluationConstant(jsr);
                                         top += Bytecodes.stackEffectOf(RET);
                                         statementIndex = beforeJumpChecks(frame, curBCI, jsr, top, statementIndex, instrument, loopCounter, skipLivenessActions);
-                                        curBCI = jsr;
+                                        setBCI(frame, curBCI = jsr);
                                         continue loop;
                                     }
                                 }
@@ -1467,7 +1459,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                                 });
                                 top += Bytecodes.stackEffectOf(RET);
                                 statementIndex = beforeJumpChecks(frame, retOpBci, targetBCI, top, statementIndex, instrument, loopCounter, skipLivenessActions);
-                                curBCI = targetBCI;
+                                setBCI(frame, curBCI = targetBCI);
                                 continue loop;
                             }
                             default:
@@ -1485,7 +1477,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                             }
                         }
                         top += Bytecodes.stackEffectOf(wideOpcode);
-                        curBCI = targetBCI;
+                        setBCI(frame, curBCI = targetBCI);
                         continue loop;
                     }
 
@@ -1558,7 +1550,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                 top = startingStackOffset(getMethodVersion().getMaxLocals());
                 frame.setObjectStatic(top, unwindContinuationExceptionRequest);
                 top++;
-                curBCI = throwValueBci;
+                setBCI(frame, curBCI = throwValueBci);
                 continue loop;
             } catch (AbstractTruffleException | StackOverflowError | OutOfMemoryError e) {
                 CompilerAsserts.partialEvaluationConstant(curBCI);
@@ -1589,7 +1581,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                                 top++;
                                 int targetBCI = stackOverflowErrorInfo[i + 2];
                                 statementIndex = beforeJumpChecks(frame, curBCI, targetBCI, top, statementIndex, instrument, loopCounter, skipLivenessActions);
-                                curBCI = targetBCI;
+                                setBCI(frame, curBCI = targetBCI);
                                 continue loop; // skip bs.next()
                             }
                         }
@@ -1658,7 +1650,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                         top++;
                         int targetBCI = handler.getHandlerBCI();
                         statementIndex = beforeJumpChecks(frame, curBCI, targetBCI, top, statementIndex, instrument, loopCounter, skipLivenessActions);
-                        curBCI = targetBCI;
+                        setBCI(frame, curBCI = targetBCI);
                         continue loop; // skip bs.next()
                     } else {
                         if (instrument != null) {
@@ -1671,7 +1663,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                         top = startingStackOffset(getMethodVersion().getMaxLocals());
                         frame.setObjectStatic(top, wrappedException);
                         top++;
-                        curBCI = throwValueBci;
+                        setBCI(frame, curBCI = throwValueBci);
                         continue loop;
                     }
                 }
@@ -1686,7 +1678,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                 top = startingStackOffset(getMethodVersion().getMaxLocals());
                 frame.setObjectStatic(top, returnValue);
                 top++;
-                curBCI = returnValueBci;
+                setBCI(frame, curBCI = returnValueBci);
                 continue loop;
             } catch (ThrowOutOfInterpreterLoop e) {
                 throw e.reThrow();
@@ -1703,7 +1695,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                 }
             }
             top += Bytecodes.stackEffectOf(curOpcode);
-            curBCI = targetBCI;
+            setBCI(frame, curBCI = targetBCI);
         }
     }
 
